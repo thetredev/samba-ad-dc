@@ -1,96 +1,187 @@
-FROM debian AS base
+ARG LOCALE_RELEASE="C.UTF-8"
 
-RUN apt update && apt upgrade -y && \
-  DEBIAN_FRONTEND=noninteractive \
-  apt install \
-    acl \
-    attr \
-    autoconf \
-    bind9utils \
-    bison \
-    build-essential \
-    curl \
-    debhelper \
-    dnsutils \
-    docbook-xml \
-    docbook-xsl \
-    flex \
-    gdb \
-    iproute2 \
-    iputils-ping \
-    jq \
-    krb5-user \
-    ldap-utils \
-    libacl1-dev \
-    libaio-dev \
-    libarchive-dev \
-    libattr1-dev \
-    libblkid-dev \
-    libbsd-dev \
-    libcap-dev \
-    libcups2-dev \
-    libdbus-1-dev \
-    libgnutls28-dev \
-    libgpgme-dev \
-    libjansson-dev \
-    libjson-perl \
-    libldap2-dev \
-    liblmdb-dev \
-    libncurses5-dev \
-    libpam0g-dev \
-    libparse-yapp-perl \
-    libpopt-dev \
-    libreadline-dev \
-    lmdb-utils \
-    netcat-traditional \
-    nettle-dev \
-    perl \
-    perl-modules \
-    pkg-config \
-    python3-all-dev \
-    python3-cryptography \
-    python3-dbg \
-    python3-dev \
-    python3-dnspython \
-    python3-gpg \
-    python3-markdown \
-    vim \
-    xsltproc \
-    zlib1g-dev \
-  -y && apt clean autoclean && \
-  apt autoremove -y
+ARG LOCALE_BUILD=C
+ARG DEBIAN_FRONTEND=noninteractive
 
-FROM base AS compiled
 
-WORKDIR /usr/local/src
-COPY samba.tar.gz samba.tar.gz
-RUN mkdir samba && \
-  tar zxvf samba.tar.gz -C samba --strip-components=1
+FROM debian:stable-slim AS runtime-deps
+ARG DEBIAN_FRONTEND
+ARG LOCALE_BUILD
+
+ARG LC_ALL=${LOCALE_BUILD}
+
+
+# CLI tools: won't change much
+RUN apt-get -y update \
+    && apt-get -y install \
+        acl \
+        attr \
+        bind9utils \
+        curl \
+        dnsutils \
+        iproute2 \
+        iputils-ping \
+        jq \
+        krb5-user \
+        ldap-utils \
+        lmdb-utils \
+        netcat-traditional \
+        nettle-bin \
+        vim \
+    && apt-get -y autoremove --purge \
+    && apt-get -y autoclean \
+    && apt-get -y clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Runtime libraries: more likely to change
+RUN apt-get -y update \
+    && apt-get -y install \
+        libacl1 \
+        libaio1 \
+        libarchive13 \
+        libattr1 \
+        libblkid1 \
+        libbsd0 \
+        libcap2 \
+        libcap2-bin \
+        libcups2 \
+        libdbus-1-3 \
+        libgnutls30 \
+        libgnutlsxx30 \
+        libgpgme11 \
+        libjansson4 \
+        libjson-c5 \
+        libldap-2.5-0 \
+        libldap-common \
+        liblmdb0 \
+        libncurses5 \
+        libpam0g \
+        libparse-yapp-perl \
+        libpopt0 \
+        libreadline8 \
+        zlib1g \
+    && apt-get -y autoremove --purge \
+    && apt-get -y autoclean \
+    && apt-get -y clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Perl, Python and their modules: as likely to change as runtime libraries
+RUN apt-get -y update \
+    && apt-get -y install \
+        perl \
+        perl-modules \
+        python3-cryptography \
+        python3-dnspython \
+        python3-gpg \
+        python3-dev \
+        python3-all-dev \
+        python3-dbg \
+        python3-markdown \
+    && apt-get -y autoremove --purge \
+    && apt-get -y autoclean \
+    && apt-get -y clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade package as last step
+RUN apt-get -y update \
+    && apt-get -y full-upgrade \
+    && apt-get -y autoremove --purge \
+    && apt-get -y autoclean \
+    && apt-get -y clean \
+    && rm -rf /var/lib/apt/lists/*
+
+
+FROM runtime-deps AS build-deps
+ARG DEBIAN_FRONTEND
+ARG LOCALE_BUILD
+
+ARG LC_ALL=${LOCALE_BUILD}
+
+
+# CLI tools / compilers: won't change much
+RUN apt-get -y update \
+    && apt-get -y install \
+        bison \
+        flex \
+        xsltproc \
+        gdb \
+        build-essential \
+        debhelper \
+        docbook-xml \
+        docbook-xsl \
+        pkg-config \
+    && apt-get -y autoremove --purge \
+    && apt-get -y autoclean \
+    && apt-get -y clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Development libraries: more likely to change
+RUN apt-get -y update \
+    && apt-get -y install \
+        libacl1-dev \
+        libaio-dev \
+        libarchive-dev \
+        libattr1-dev \
+        libblkid-dev \
+        libbsd-dev \
+        libcap-dev \
+        libcups2-dev \
+        libdbus-1-dev \
+        libgnutls28-dev \
+        libgpgme-dev \
+        libjansson-dev \
+        libjson-perl \
+        libldap2-dev \
+        liblmdb-dev \
+        libncurses5-dev \
+        libpam0g-dev \
+        libparse-yapp-perl \
+        libpopt-dev \
+        libreadline-dev \
+        zlib1g-dev \
+        nettle-dev \
+    && apt-get -y autoremove --purge \
+    && apt-get -y autoclean \
+    && apt-get -y clean \
+    && rm -rf /var/lib/apt/lists/*
+
+
+FROM build-deps AS compiled
+COPY --link=true samba.tar.gz /usr/local/src/samba.tar.gz
 
 WORKDIR /usr/local/src/samba
+RUN tar zxvf ../samba.tar.gz -C . --strip-components=1
 RUN ./configure && \
   make -j$(nproc) && \
   make install
 
-FROM base
 
-ENV PATH="/usr/local/samba/bin:/usr/local/samba/sbin:${PATH}"
-ENV LC_CTYPE="C.UTF-8"
-ENV LC_MESSAGES="C.UTF-8"
-ENV LC_ALL="C.UTF-8"
+FROM runtime-deps
+ARG LOCALE_RELEASE
 
-COPY --from=compiled /usr/local/samba /usr/local/samba
+ENV PATH="/usr/local/samba/bin:/usr/local/samba/sbin:${PATH}" \
+    LC_CTYPE=${LOCALE_RELEASE} \
+    LC_MESSAGES=${LOCALE_RELEASE} \
+    LC_ALL=${LOCALE_RELEASE}
 
-WORKDIR /usr/local/sbin
-COPY sbin /usr/local/sbin
+COPY --link=true --from=compiled /usr/local/samba /opt/samba
+COPY --link=true sbin /usr/local/sbin
 
-CMD ["/bin/bash", "-c", "samba-domain-provision && samba -F"]
-
-VOLUME /usr/local/samba/etc
-VOLUME /usr/local/samba/private
-VOLUME /usr/local/samba/var
+VOLUME /usr/local/samba
 
 HEALTHCHECK --interval=5s --timeout=3s --retries=60 \
   CMD nc -z localhost 445 || exit 1
 
 EXPOSE 53 53/udp 88 88/udp 123/udp 135 137/udp 138/udp 139 389 389/udp 445 464 464/udp 636 3268 3269 49152-65535
+
+WORKDIR /usr/local/sbin
+ENTRYPOINT [ "samba-entrypoint" ]
+
+# Additional CLI tools
+RUN apt-get -y update \
+    && apt-get -y install \
+        rsync \
+    && apt-get -y autoremove --purge \
+    && apt-get -y autoclean \
+    && apt-get -y clean \
+    && rm -rf /var/lib/apt/lists/*

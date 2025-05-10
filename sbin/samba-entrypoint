@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+# Exit if any error
+set -euo pipefail
+
+
+__samba_sync_command=(
+  rsync
+  -auvP
+  /opt/samba/
+  /usr/local/samba/
+)
+__samba_provision_command=samba-domain-provision
+__samba_run_command=(
+  samba
+  -F
+)
+
+
+run_command () {
+  echo "Running '${@}' ..."
+  ${@}
+  echo "'${@}' ran successfully."
+}
+
+run_command ${__samba_sync_command[@]}
+run_command ${__samba_provision_command}
+
+echo "Running '${__samba_run_command[@]}' ..."
+exec ${__samba_run_command[@]}
